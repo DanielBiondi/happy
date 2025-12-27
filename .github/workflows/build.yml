@@ -9,6 +9,18 @@ jobs:
     env:
       CI: true
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # We don't need these large packages for an Android build
+          tool-cache: false
+          android: false 
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -30,8 +42,6 @@ jobs:
       - name: Build Android APK
         run: |
           # 1. FIND THE APP
-          # Looks for app.json or app.config.ts to know where to run the build
-          # We ignore node_modules to avoid finding libraries
           CONFIG_FILE=$(find . -maxdepth 4 -name "app.json" -o -name "app.config.js" -o -name "app.config.ts" | grep -v "node_modules" | head -n 1)
 
           if [ -z "$CONFIG_FILE" ]; then
@@ -45,20 +55,20 @@ jobs:
           cd "$APP_DIR"
 
           # 2. GENERATE ANDROID FOLDER
-          # This creates the missing 'android' folder using the standard Expo command
           echo "Running prebuild to generate Android files..."
           npx expo prebuild --platform android
 
           # 3. COMPILE APK
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          
+          # We add --max-workers=2 to prevent crashing the CPU since we are tight on resources
+          ./gradlew assembleDebug --no-daemon --max-workers=2
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: HappyCoder-App
-          # Uploads any APK found, ignoring the node_modules trash
           path: |
             **/*.apk
             !**/node_modules/**
