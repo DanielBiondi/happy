@@ -6,6 +6,8 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    env:
+      CI: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -25,15 +27,29 @@ jobs:
       - name: Install Dependencies
         run: yarn install
 
-      - name: Generate Android Folder (Prebuild)
-        run: |
-          echo "Generating Android project..."
-          # This command creates the 'android' folder from scratch
-          npx expo prebuild --platform android --no-interactive
-
       - name: Build Android APK
         run: |
-          # Now the android folder should exist
+          # 1. FIND THE APP
+          # Looks for app.json or app.config.ts to know where to run the build
+          # We ignore node_modules to avoid finding libraries
+          CONFIG_FILE=$(find . -maxdepth 4 -name "app.json" -o -name "app.config.js" -o -name "app.config.ts" | grep -v "node_modules" | head -n 1)
+
+          if [ -z "$CONFIG_FILE" ]; then
+             echo "Could not find app.json. Assuming root directory..."
+             APP_DIR="."
+          else
+             APP_DIR=$(dirname "$CONFIG_FILE")
+             echo "Found Expo app configuration in: $APP_DIR"
+          fi
+          
+          cd "$APP_DIR"
+
+          # 2. GENERATE ANDROID FOLDER
+          # This creates the missing 'android' folder using the standard Expo command
+          echo "Running prebuild to generate Android files..."
+          npx expo prebuild --platform android
+
+          # 3. COMPILE APK
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
@@ -42,4 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: HappyCoder-App
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          # Uploads any APK found, ignoring the node_modules trash
+          path: |
+            **/*.apk
+            !**/node_modules/**
