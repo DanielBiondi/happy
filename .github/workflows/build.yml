@@ -8,11 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
+      # FORCE disable the daemon globally. This overrides any file settings.
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"'
     steps:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          # We don't need these large packages for an Android build
           tool-cache: false
           android: false 
           dotnet: true
@@ -55,15 +56,19 @@ jobs:
           cd "$APP_DIR"
 
           # 2. GENERATE ANDROID FOLDER
-          echo "Running prebuild to generate Android files..."
+          echo "Running prebuild..."
           npx expo prebuild --platform android
 
           # 3. COMPILE APK
           cd android
           chmod +x gradlew
           
-          # We add --max-workers=2 to prevent crashing the CPU since we are tight on resources
-          ./gradlew assembleDebug --no-daemon --max-workers=2
+          # SAFETY: Kill any zombie processes before we start
+          ./gradlew --stop || true
+          
+          # CLEAN & BUILD
+          # using clean ensures no corrupt cache files from previous attempts
+          ./gradlew clean assembleDebug --no-daemon --max-workers=2
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
