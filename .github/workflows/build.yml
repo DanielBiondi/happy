@@ -1,7 +1,7 @@
 name: Build Android APK
 
 on:
-  workflow_dispatch: # This allows you to click a button to start the build manually
+  workflow_dispatch:
 
 jobs:
   build-android:
@@ -19,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '22'
+          node-version: '22'    # Fixed: Updated to Node 22 to solve the previous error
           cache: 'yarn'
 
       - name: Install Dependencies
@@ -27,7 +27,13 @@ jobs:
 
       - name: Build Android APK
         run: |
-          cd android
+          # This command finds the folder containing 'gradlew' automatically
+          # so we don't have to guess if it's in 'android', 'happy-coder', or 'packages'
+          ANDROID_DIR=$(find . -name gradlew -type f | head -n 1 | xargs dirname)
+          
+          echo "Found Android project in: $ANDROID_DIR"
+          cd "$ANDROID_DIR"
+          
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
@@ -35,4 +41,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: HappyCoder-App
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          # Finds the .apk file wherever it ended up
+          path: "**/*.apk"
