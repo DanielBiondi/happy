@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Release APK
 
 on:
   workflow_dispatch:
@@ -8,7 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
-      # FORCE disable the daemon globally. This overrides any file settings.
       GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"'
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -40,40 +39,42 @@ jobs:
       - name: Install Dependencies
         run: yarn install
 
-      - name: Build Android APK
+      - name: Build Android Release
         run: |
           # 1. FIND THE APP
           CONFIG_FILE=$(find . -maxdepth 4 -name "app.json" -o -name "app.config.js" -o -name "app.config.ts" | grep -v "node_modules" | head -n 1)
-
           if [ -z "$CONFIG_FILE" ]; then
-             echo "Could not find app.json. Assuming root directory..."
              APP_DIR="."
           else
              APP_DIR=$(dirname "$CONFIG_FILE")
-             echo "Found Expo app configuration in: $APP_DIR"
           fi
-          
           cd "$APP_DIR"
 
           # 2. GENERATE ANDROID FOLDER
           echo "Running prebuild..."
           npx expo prebuild --platform android
 
-          # 3. COMPILE APK
           cd android
           chmod +x gradlew
-          
-          # SAFETY: Kill any zombie processes before we start
-          ./gradlew --stop || true
-          
-          # CLEAN & BUILD
-          # using clean ensures no corrupt cache files from previous attempts
-          ./gradlew clean assembleDebug --no-daemon --max-workers=2
+
+          # 3. GENERATE A SIGNING KEY (Required for Release builds)
+          # We create a temporary keystore file so Gradle doesn't complain
+          keytool -genkey -v -keystore app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
+          # 4. HACK: FORCE RELEASE BUILD TO USE DEBUG KEY
+          # (This tricks the build into signing the Release APK with our temp key)
+          sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.debug/g' app/build.gradle
+          # Ensure release build uses the debug signing config
+          perl -i -pe 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' app/build.gradle
+
+          # 5. BUILD THE RELEASE APK
+          ./gradlew clean assembleRelease --no-daemon --max-workers=2
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: HappyCoder-App
+          name: HappyCoder-Release
           path: |
             **/*.apk
             !**/node_modules/**
+            !**/debug/**
