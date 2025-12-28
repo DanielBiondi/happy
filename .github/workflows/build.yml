@@ -8,6 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
+      # Disable the daemon to prevent lock issues
       GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"'
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -57,17 +58,20 @@ jobs:
           cd android
           chmod +x gradlew
 
-          # 3. GENERATE A SIGNING KEY (Required for Release builds)
-          # We create a temporary keystore file so Gradle doesn't complain
+          # 3. CLEANUP & KEY GENERATION
+          # Fix: Delete the auto-generated keystore so we don't get a "file exists" error
+          rm -f app/debug.keystore
+          
+          # Generate our new temporary keystore
           keytool -genkey -v -keystore app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-          # 4. HACK: FORCE RELEASE BUILD TO USE DEBUG KEY
-          # (This tricks the build into signing the Release APK with our temp key)
+          # 4. CONFIGURE BUILD TO USE THIS KEY
+          # Force the release build to use our new key
           sed -i 's/signingConfig signingConfigs.debug/signingConfig signingConfigs.debug/g' app/build.gradle
-          # Ensure release build uses the debug signing config
           perl -i -pe 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' app/build.gradle
 
           # 5. BUILD THE RELEASE APK
+          # using clean ensures a fresh start
           ./gradlew clean assembleRelease --no-daemon --max-workers=2
 
       - name: Upload APK
