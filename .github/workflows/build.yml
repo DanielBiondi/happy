@@ -1,0 +1,88 @@
+name: Build Release APK
+
+# Self-host Android build for DanielBiondi/happy.
+# Builds packages/happy-app into a signed release APK on GitHub's runners,
+# baking the self-hosted server URL in at build time. Triggered manually.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+      GRADLE_OPTS: '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"'
+      # Build the production variant (app id com.ex3ndr.happy; bundled
+      # google-services.json matches it so the build succeeds).
+      APP_ENV: production
+      # Point the app at our self-hosted server by default (still overridable
+      # in-app via the custom-server screen).
+      EXPO_PUBLIC_HAPPY_SERVER_URL: https://happy.project-celeste.com
+      # No analytics in our build.
+      EXPO_PUBLIC_POSTHOG_API_KEY: ""
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies (app workspace only)
+        run: SKIP_HAPPY_WIRE_BUILD=1 pnpm install --frozen-lockfile --filter happy-app...
+
+      - name: Build shared wire package
+        run: pnpm --filter @slopus/happy-wire build
+
+      - name: Expo prebuild (android)
+        working-directory: packages/happy-app
+        run: pnpm exec expo prebuild --platform android --no-install
+
+      - name: Install persistent signing key
+        working-directory: packages/happy-app/android
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          # Drop in our persistent keystore (standard debug creds android/android,
+          # alias androiddebugkey) so the release build signs with a STABLE key →
+          # future builds install as updates instead of requiring uninstall.
+          echo "$ANDROID_KEYSTORE_B64" | base64 -d > app/debug.keystore
+          # Force the release build type to use the (now-persistent) debug signingConfig.
+          perl -i -pe 's/signingConfig signingConfigs\.release/signingConfig signingConfigs.debug/g' app/build.gradle
+          echo "--- release signingConfig in build.gradle ---"
+          grep -n "signingConfig" app/build.gradle || true
+
+      - name: Build release APK
+        working-directory: packages/happy-app/android
+        run: ./gradlew clean assembleRelease --no-daemon --max-workers=2
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HappyCoder-Release
+          path: packages/happy-app/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
