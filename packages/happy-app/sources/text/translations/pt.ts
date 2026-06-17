@@ -418,6 +418,7 @@ export const pt: TranslationStructure = {
             default: 'Padrão',
             acceptEdits: 'Aceitar edições',
             plan: 'Modo de planejamento',
+            auto: 'auto',
             dontAsk: 'Não perguntar',
             bypassPermissions: 'Modo Yolo',
             badgeAcceptAllEdits: 'Aceitar todas as edições',

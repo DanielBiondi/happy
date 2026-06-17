@@ -420,6 +420,7 @@ export const zhHans: TranslationStructure = {
             default: '默认',
             acceptEdits: '接受编辑',
             plan: '计划模式',
+            auto: '自动',
             dontAsk: '不再询问',
             bypassPermissions: 'Yolo 模式',
             badgeAcceptAllEdits: '接受所有编辑',

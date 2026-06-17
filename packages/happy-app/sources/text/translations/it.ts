@@ -417,6 +417,7 @@ export const it: TranslationStructure = {
             default: 'Predefinito',
             acceptEdits: 'Accetta modifiche',
             plan: 'Modalità piano',
+            auto: 'auto',
             dontAsk: 'Non chiedere',
             bypassPermissions: 'Modalità YOLO',
             badgeAcceptAllEdits: 'Accetta tutte le modifiche',

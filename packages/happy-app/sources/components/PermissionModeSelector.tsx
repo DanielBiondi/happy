@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Platform, View } from 'react-native';
+import { Pressable, Platform, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { hapticsLight } from './haptics';
 import { hackMode, hackModes } from '@/sync/modeHacks';
@@ -62,7 +62,9 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
             }}
         >
             <Ionicons name={'hammer-outline'} size={16} color={'black'} style={{ marginRight: 4 }} />
-            <View />
+            <Text numberOfLines={1} style={{ color: 'black', fontSize: 13 }}>
+                {hackedMode.name}
+            </Text>
         </Pressable>
     );
 };

@@ -5,7 +5,7 @@ import type { PermissionMode } from '@/api/types';
 export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']>;
 
 /**
- * Map any PermissionMode (7 modes) to a Claude-compatible mode (4 modes)
+ * Map any PermissionMode to a Claude-compatible SDK mode.
  * This is the ONLY place where Codex modes are mapped to Claude equivalents.
  *
  * Mapping:
@@ -13,8 +13,8 @@ export type ClaudeSdkPermissionMode = NonNullable<QueryOptions['permissionMode']
  * - safe-yolo → default (ask for permissions)
  * - read-only → default (Claude doesn't support read-only)
  *
- * Claude modes pass through unchanged:
- * - default, acceptEdits, bypassPermissions, plan
+ * Claude modes pass through unchanged (all native to the Claude Agent SDK):
+ * - default, acceptEdits, bypassPermissions, plan, dontAsk, auto
  */
 export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
     const codexToClaudeMap: Record<string, ClaudeSdkPermissionMode> = {
@@ -30,6 +30,8 @@ const VALID_PERMISSION_MODES: readonly PermissionMode[] = [
     'acceptEdits',
     'bypassPermissions',
     'plan',
+    'dontAsk',
+    'auto',
     'read-only',
     'safe-yolo',
     'yolo',

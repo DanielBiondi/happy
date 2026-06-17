@@ -419,6 +419,7 @@ export const ca: TranslationStructure = {
             default: 'Per defecte',
             acceptEdits: 'Accepta edicions',
             plan: 'Mode de planificació',
+            auto: 'auto',
             dontAsk: 'No preguntis',
             bypassPermissions: 'Mode Yolo',
             badgeAcceptAllEdits: 'Accepta totes les edicions',

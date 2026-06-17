@@ -419,6 +419,7 @@ export const zhHant: TranslationStructure = {
             default: '預設',
             acceptEdits: '接受編輯',
             plan: '計畫模式',
+            auto: '自動',
             dontAsk: '不再詢問',
             bypassPermissions: 'Yolo 模式',
             badgeAcceptAllEdits: '接受所有編輯',

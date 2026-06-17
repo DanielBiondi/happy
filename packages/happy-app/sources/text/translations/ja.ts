@@ -420,6 +420,7 @@ export const ja: TranslationStructure = {
             default: 'デフォルト',
             acceptEdits: '編集を許可',
             plan: 'プランモード',
+            auto: '自動',
             dontAsk: '確認しない',
             bypassPermissions: 'Yoloモード',
             badgeAcceptAllEdits: 'すべての編集を許可',

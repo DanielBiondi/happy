@@ -433,6 +433,7 @@ export const en: TranslationStructure = {
             default: 'default permissions',
             acceptEdits: 'accept edits',
             plan: 'plan',
+            auto: 'auto',
             dontAsk: "don't ask",
             bypassPermissions: 'yolo',
             badgeAcceptAllEdits: 'accept all edits',
