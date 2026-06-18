@@ -103,10 +103,6 @@ export function applySandboxPermissionPolicy(
     return 'bypassPermissions';
 }
 
-function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
-    return mode === 'bypassPermissions' || mode === 'yolo';
-}
-
 /**
  * Resolve permission mode overrides from remote app messages.
  *
