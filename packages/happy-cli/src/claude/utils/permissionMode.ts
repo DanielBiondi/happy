@@ -110,11 +110,16 @@ function isClaudeBypassEquivalent(mode: PermissionMode | undefined): boolean {
 /**
  * Resolve permission mode overrides from remote app messages.
  *
- * Happy app versions can send `permissionMode: "default"` with every message
- * even when the CLI process was started in yolo/bypass mode. Since Claude maps
- * both `yolo` and `bypassPermissions` to bypass at the SDK boundary, do not let
- * that ambient default downgrade either mode, but still allow explicit modes
- * such as plan to take effect.
+ * The Happy app sends `permissionMode: "default"` with EVERY message as an
+ * ambient fallback (see slopus/happy#1235). The upstream guard only protected
+ * `bypassPermissions`/`yolo`, which meant any user-chosen mode like `auto`,
+ * `acceptEdits`, or `plan` would silently revert to `default` on the next
+ * message — making mode changes from the app appear "stuck".
+ *
+ * Broaden the guard: any time the user has an explicit non-default mode set,
+ * ignore an ambient `default` from the app. Switching to default deliberately
+ * is rare (and still possible by restarting the session); preserving the
+ * user's pick is by far the more useful default.
  */
 export function resolveRemoteClaudePermissionMode(
     currentMode: PermissionMode | undefined,
@@ -126,7 +131,7 @@ export function resolveRemoteClaudePermissionMode(
     }
 
     const nextMode = applySandboxPermissionPolicy(incomingMode, sandboxEnabled);
-    if (isClaudeBypassEquivalent(currentMode) && nextMode === 'default') {
+    if (nextMode === 'default' && currentMode && currentMode !== 'default') {
         return currentMode;
     }
 

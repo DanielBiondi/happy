@@ -401,8 +401,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }));
 
     // Import MessageQueue2 and create message queue
+    // PR #1402: hash on the full permissionMode value, not just isPlan — collapsing
+    // every non-plan mode to the same hash meant switches between default/auto/bypass/
+    // acceptEdits never triggered the mode-change path in nextMessage.
     const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
-        isPlan: mode.permissionMode === 'plan',
+        permissionMode: mode.permissionMode,
         model: mode.model,
         fallbackModel: mode.fallbackModel,
         customSystemPrompt: mode.customSystemPrompt,

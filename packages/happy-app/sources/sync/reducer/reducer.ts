@@ -1141,8 +1141,19 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 // Helpers
 //
 
-function allocateId() {
-    return Math.random().toString(36).substring(2, 15);
+function allocateId(): string {
+    // PR #1299: the previous `Math.random().toString(36).substring(2, 15)` yielded
+    // only ~67 bits of entropy. Those IDs key `state.messages`, `state.messageIds`,
+    // and `toolIdToMessageId` — birthday-paradox collisions in long sessions silently
+    // OVERWRITE messages (they vanish from chat) and misroute tool results.
+    // Prefer Web Crypto's `randomUUID` (128-bit, cryptographically random) — RN/Expo
+    // polyfills it via expo-crypto, which the app already initialises at startup.
+    const g = globalThis as { crypto?: { randomUUID?: () => string } };
+    if (typeof g.crypto?.randomUUID === 'function') {
+        return g.crypto.randomUUID();
+    }
+    // ~96-bit fallback for node-only test runners without the RN polyfill.
+    return `${Math.random().toString(36).slice(2, 11)}-${Math.random().toString(36).slice(2, 11)}-${Date.now().toString(36)}`;
 }
 
 function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {

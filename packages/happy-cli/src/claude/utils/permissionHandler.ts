@@ -10,6 +10,7 @@ import { PermissionResult } from "../sdk/types";
 import { Session } from "../session";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
+import { mapToClaudeMode } from "./permissionMode";
 
 interface PermissionResponse {
     id: string;
@@ -54,7 +55,19 @@ export class PermissionHandler {
     }
 
     handleModeChange(mode: PermissionMode) {
-        this.permissionMode = mode;
+        // PR #1157: normalize to Claude SDK form (yolo→bypassPermissions, etc.) before
+        // storing — handleToolCall compares against 'bypassPermissions'/'acceptEdits' by
+        // literal equality, so an unmapped 'yolo' would never hit the bypass branch.
+        const mapped = mapToClaudeMode(mode);
+        this.permissionMode = mapped;
+        // PR #1402: propagate the change to the active Claude SDK query, otherwise the
+        // session keeps running with whatever mode it was started in even after the user
+        // switches modes in the mobile app.
+        if (this.setPermissionModeCallback) {
+            this.setPermissionModeCallback(mapped).catch((err) => {
+                logger.debug('Failed to set permission mode via SDK:', err);
+            });
+        }
     }
 
     /**
