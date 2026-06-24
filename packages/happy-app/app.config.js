@@ -205,7 +205,14 @@ export default {
                 }
             ]
         ],
+        // OTA updates DISABLED for the self-hosted fork. The url below is
+        // upstream Happy's EAS channel (owner bulkacorp); leaving expo-updates
+        // enabled let upstream push a JS bundle (e.g. a /v3-API client) onto our
+        // sideloaded APK, which our self-hosted server can't serve -> session
+        // list / inbox 404 and "nothing loads". We ship full APKs via GitHub
+        // releases and don't use OTA, so disable runtime update checks entirely.
         updates: {
+            enabled: false,
             url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
             requestHeaders: {
                 "expo-channel-name": "production"
