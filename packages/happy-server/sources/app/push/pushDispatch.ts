@@ -87,13 +87,20 @@ export async function dispatchSessionEventPush(params: {
     const { userId, sessionId, title, body, data } = params;
 
     try {
-        try {
-            if (await isUserActive(userId)) {
-                log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active`);
-                return;
+        // Self-host patch: the mobile app's background reconnect loop leaves a
+        // phantom "active" socket on the server, so this presence check misfires
+        // and suppresses EVERY "It's ready!" push (logs "user active" even when the
+        // app is fully closed). Default to always-send so pushes actually deliver;
+        // set HAPPY_SUPPRESS_ACTIVE_PUSH=true to restore upstream presence behavior.
+        if (process.env.HAPPY_SUPPRESS_ACTIVE_PUSH === 'true') {
+            try {
+                if (await isUserActive(userId)) {
+                    log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active`);
+                    return;
+                }
+            } catch (presenceError) {
+                log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
             }
-        } catch (presenceError) {
-            log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
         }
 
         await fetchTokensAndSend({
