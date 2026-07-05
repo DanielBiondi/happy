@@ -25,7 +25,7 @@ import { startOfflineReconnection, connectionState } from '@/utils/serverConnect
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { Session } from './session';
-import { applySandboxPermissionPolicy, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
+import { applySandboxPermissionPolicy, isBypassPermissionMode, mapToClaudeMode, resolveInitialClaudePermissionMode, resolveRemoteClaudePermissionMode } from './utils/permissionMode';
 import { decodeBase64, encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession } from '@/api/types';
 import { getProjectPath } from './utils/path';
@@ -49,7 +49,12 @@ export interface StartOptions {
     jsRuntime?: JsRuntime
 }
 
-const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'yolo';
+// Upstream ships 'yolo' here, which silently ran every app-controlled turn
+// with bypassPermissions on sessions launched without an explicit mode (plain
+// `happy`). Default to 'auto' instead: the classifier auto-allows safe actions
+// and escalates risky ones to the app. Bypass stays opt-in via
+// --dangerously-skip-permissions / --permission-mode yolo|bypassPermissions.
+const DEFAULT_CLAUDE_PERMISSION_MODE: PermissionMode = 'auto';
 const DEFAULT_CLAUDE_MODEL = 'opus';
 const DEFAULT_CLAUDE_EFFORT: 'low' | 'medium' | 'high' | 'xhigh' | 'max' = 'medium';
 
@@ -92,6 +97,11 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         initialPermissionMode === 'yolo' ||
         sandboxEnabled ||
         Boolean(options.claudeArgs?.includes('--dangerously-skip-permissions'));
+    // Remote messages may only escalate to bypass when the session already
+    // started bypass-equivalent, or the host opts in (e.g. worker containers,
+    // which are sandboxes themselves).
+    const allowRemoteBypassEscalation =
+        dangerouslySkipPermissions || process.env.HAPPY_ALLOW_REMOTE_YOLO === '1';
     if (!machineId) {
         console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
         process.exit(1);
@@ -127,6 +137,10 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         flavor: 'claude',
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
+        // Report the mode the session actually runs in so the app can display
+        // the truth instead of guessing a client-side default. Kept up to date
+        // on every applied mode change below.
+        ...(initialPermissionMode ? { currentOperatingModeCode: mapToClaudeMode(initialPermissionMode) } : {}),
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
         ...(forkedFromMessageId ? { forkedFromMessageId } : {}),
     };
@@ -426,6 +440,14 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     let currentEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined = DEFAULT_CLAUDE_EFFORT; // Track current Claude effort (thinking depth)
 
+    // Keep the app's picture of the session honest: publish the mode the
+    // session is actually running in (Claude SDK naming) into metadata.
+    // The app reads metadata.currentOperatingModeCode as its display source.
+    const reportPermissionModeToApp = (mode: PermissionMode | undefined) => {
+        const claudeMode = mode ? mapToClaudeMode(mode) : undefined;
+        session.updateMetadata((meta) => ({ ...meta, currentOperatingModeCode: claudeMode }));
+    };
+
     const resetCurrentModeDefaults = () => {
         currentPermissionMode = initialPermissionMode;
         currentModel = options.model ?? DEFAULT_CLAUDE_MODEL;
@@ -435,6 +457,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         currentAllowedTools = undefined;
         currentDisallowedTools = undefined;
         currentEffort = DEFAULT_CLAUDE_EFFORT;
+        reportPermissionModeToApp(currentPermissionMode);
         logger.debug('[loop] Reset current mode defaults after abort');
     };
 
@@ -489,16 +512,29 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
                 currentPermissionMode,
                 message.meta.permissionMode,
                 sandboxEnabled,
+                allowRemoteBypassEscalation,
             );
             currentPermissionMode = messagePermissionMode;
             const ignoredDefaultDowngrade =
                 (previousPermissionMode === 'bypassPermissions' || previousPermissionMode === 'yolo')
                 && message.meta.permissionMode === 'default'
                 && currentPermissionMode === previousPermissionMode;
+            const refusedBypassEscalation =
+                isBypassPermissionMode(message.meta.permissionMode)
+                && !isBypassPermissionMode(currentPermissionMode);
             if (ignoredDefaultDowngrade) {
                 logger.debug(`[loop] Ignoring permission mode downgrade from ${previousPermissionMode} to default`);
+            } else if (refusedBypassEscalation) {
+                logger.debug(`[loop] Refused remote escalation to ${message.meta.permissionMode}, staying on: ${currentPermissionMode ?? 'default'}`);
+                session.sendSessionEvent({
+                    type: 'message',
+                    message: `Ignored remote switch to ${message.meta.permissionMode}: this session was not started with bypass permissions. Staying in ${currentPermissionMode ?? 'default'} mode. To allow, relaunch with --permission-mode bypassPermissions (or --dangerously-skip-permissions), or set HAPPY_ALLOW_REMOTE_YOLO=1.`,
+                });
             } else {
                 logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+            }
+            if (currentPermissionMode !== previousPermissionMode) {
+                reportPermissionModeToApp(currentPermissionMode);
             }
         } else {
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);

@@ -97,18 +97,47 @@ describe('applySandboxPermissionPolicy', () => {
 
 describe('resolveRemoteClaudePermissionMode', () => {
     it('preserves bypassPermissions when an app message sends the default mode', () => {
-        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'default', false)).toBe('bypassPermissions');
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'default', false, true)).toBe('bypassPermissions');
     });
 
     it('preserves yolo when an app message sends the default mode', () => {
-        expect(resolveRemoteClaudePermissionMode('yolo', 'default', false)).toBe('yolo');
+        expect(resolveRemoteClaudePermissionMode('yolo', 'default', false, true)).toBe('yolo');
     });
 
     it('still allows explicit plan mode after bypassPermissions was active', () => {
-        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'plan', false)).toBe('plan');
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'plan', false, true)).toBe('plan');
     });
 
     it('applies sandbox policy to incoming modes', () => {
-        expect(resolveRemoteClaudePermissionMode('default', 'plan', true)).toBe('bypassPermissions');
+        expect(resolveRemoteClaudePermissionMode('default', 'plan', true, true)).toBe('bypassPermissions');
+    });
+
+    it('refuses remote escalation to bypassPermissions when not allowed', () => {
+        expect(resolveRemoteClaudePermissionMode('auto', 'bypassPermissions', false, false)).toBe('auto');
+    });
+
+    it('refuses remote escalation to yolo when not allowed', () => {
+        expect(resolveRemoteClaudePermissionMode('default', 'yolo', false, false)).toBe('default');
+    });
+
+    it('refuses remote escalation even when current mode is undefined', () => {
+        expect(resolveRemoteClaudePermissionMode(undefined, 'yolo', false, false)).toBe(undefined);
+    });
+
+    it('allows remote bypass when escalation is explicitly allowed', () => {
+        expect(resolveRemoteClaudePermissionMode('auto', 'bypassPermissions', false, true)).toBe('bypassPermissions');
+    });
+
+    it('allows switching between bypass-equivalent modes without opt-in', () => {
+        expect(resolveRemoteClaudePermissionMode('bypassPermissions', 'yolo', false, false)).toBe('yolo');
+    });
+
+    it('sandbox mode always forces bypass regardless of opt-in', () => {
+        expect(resolveRemoteClaudePermissionMode('default', 'acceptEdits', true, false)).toBe('bypassPermissions');
+    });
+
+    it('still allows non-bypass mode changes without opt-in', () => {
+        expect(resolveRemoteClaudePermissionMode('auto', 'plan', false, false)).toBe('plan');
+        expect(resolveRemoteClaudePermissionMode('default', 'acceptEdits', false, false)).toBe('acceptEdits');
     });
 });

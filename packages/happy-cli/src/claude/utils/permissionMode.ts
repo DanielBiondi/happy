@@ -25,6 +25,11 @@ export function mapToClaudeMode(mode: PermissionMode): ClaudeSdkPermissionMode {
     return codexToClaudeMap[mode] ?? (mode as ClaudeSdkPermissionMode);
 }
 
+/** Modes that fully skip permission checks (Claude bypassPermissions and its Codex alias). */
+export function isBypassPermissionMode(mode: PermissionMode | undefined): boolean {
+    return mode === 'bypassPermissions' || mode === 'yolo';
+}
+
 const VALID_PERMISSION_MODES: readonly PermissionMode[] = [
     'default',
     'acceptEdits',
@@ -116,11 +121,20 @@ export function applySandboxPermissionPolicy(
  * ignore an ambient `default` from the app. Switching to default deliberately
  * is rare (and still possible by restarting the session); preserving the
  * user's pick is by far the more useful default.
+ *
+ * Escalation guard: a remote message may only switch the session INTO a
+ * bypass mode (yolo/bypassPermissions) when the session was launched
+ * bypass-equivalent (--dangerously-skip-permissions / --permission-mode
+ * yolo|bypassPermissions / sandbox) or the host explicitly opts in via
+ * HAPPY_ALLOW_REMOTE_YOLO=1 (passed as allowBypassEscalation). This keeps a
+ * stray or accidental mode value from the app from silently disabling all
+ * permission checks on an unsandboxed host.
  */
 export function resolveRemoteClaudePermissionMode(
     currentMode: PermissionMode | undefined,
     incomingMode: PermissionMode | undefined,
     sandboxEnabled: boolean,
+    allowBypassEscalation: boolean,
 ): PermissionMode | undefined {
     if (!incomingMode) {
         return currentMode;
@@ -128,6 +142,15 @@ export function resolveRemoteClaudePermissionMode(
 
     const nextMode = applySandboxPermissionPolicy(incomingMode, sandboxEnabled);
     if (nextMode === 'default' && currentMode && currentMode !== 'default') {
+        return currentMode;
+    }
+
+    if (
+        isBypassPermissionMode(nextMode)
+        && !isBypassPermissionMode(currentMode)
+        && !allowBypassEscalation
+        && !sandboxEnabled
+    ) {
         return currentMode;
     }
 

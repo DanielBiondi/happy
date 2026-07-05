@@ -438,11 +438,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         resolveAgentDefaultConfig(agentDefaultOverrides, flavor)
     ), [agentDefaultOverrides, flavor]);
 
+    // Display priority: explicit local pick (what the next message will send)
+    // → CLI-reported actual mode (metadata.currentOperatingModeCode, kept
+    // up to date by the CLI) → code default. The default must come LAST so we
+    // never display a guessed mode over the session's real one.
     const permissionMode = React.useMemo<PermissionMode | null>(() => (
         resolveCurrentOption(availableModes, [
             session.permissionMode,
-            effectiveAgentDefaults.permissionMode,
             session.metadata?.currentOperatingModeCode,
+            effectiveAgentDefaults.permissionMode,
         ])
     ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode]);
 
