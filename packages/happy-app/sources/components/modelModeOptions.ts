@@ -76,11 +76,18 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 }
 
 export function getClaudeModelModes(): ModelMode[] {
+    // Keys are FULL model ids, not the bare `opus`/`sonnet` aliases: the key is
+    // passed straight through to Claude Code's --model with no whitelist, and
+    // the bare aliases now float to the latest of each tier (e.g. `opus` ==
+    // Opus 5), so an alias-keyed "opus 4.8" entry would silently run the wrong
+    // model. Pinning to ids keeps each label honest.
     return [
         { key: 'default', name: 'default model', description: null },
-        { key: 'opus', name: 'opus 4.8', description: null },
-        { key: 'sonnet', name: 'sonnet 4.6', description: null },
-        { key: 'haiku', name: 'haiku 4.5', description: null },
+        { key: 'claude-fable-5-1', name: 'fable 5.1', description: 'most capable' },
+        { key: 'claude-opus-5', name: 'opus 5', description: null },
+        { key: 'claude-sonnet-5', name: 'sonnet 5', description: null },
+        { key: 'claude-opus-4-8', name: 'opus 4.8', description: null },
+        { key: 'claude-haiku-4-5', name: 'haiku 4.5', description: 'fastest' },
     ];
 }
 
