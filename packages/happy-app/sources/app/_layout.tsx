@@ -35,16 +35,22 @@ import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 import { useTauriZoom } from '@/hooks/useTauriZoom';
 import { useTauriDrag } from '@/hooks/useTauriDrag';
 import { BrowserNavigationShortcuts } from '@/hooks/useBrowserNavigationShortcuts';
+import { getVisibleSessionId } from '@/utils/visibleSession';
 
-// Configure notification handler — suppress push display when app is in foreground
+// Configure notification handler — suppress the banner/sound ONLY when the user
+// is already looking at the exact chat the push is for. A push for any other
+// session (or when the app is backgrounded / on the session list) still buzzes.
 Notifications.setNotificationHandler({
-    handleNotification: async () => {
+    handleNotification: async (notification) => {
         const isForeground = AppState.currentState === 'active';
+        const data = notification?.request?.content?.data as { sessionId?: string } | undefined;
+        const sessionId = data?.sessionId;
+        const viewingThisChat = isForeground && !!sessionId && sessionId === getVisibleSessionId();
         return {
-            shouldShowAlert: !isForeground,
-            shouldPlaySound: !isForeground,
+            shouldShowAlert: !viewingThisChat,
+            shouldPlaySound: !viewingThisChat,
             shouldSetBadge: true,
-            shouldShowBanner: !isForeground,
+            shouldShowBanner: !viewingThisChat,
             shouldShowList: true,
         };
     },
