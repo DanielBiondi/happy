@@ -10,30 +10,20 @@
  * Connected clients still receive the realtime message update over socket;
  * only the Expo push for "new message" went away.
  *
- * Suppression: if the user is demonstrably looking at a UI client
- * (`user-scoped` socket reporting `app-state: active`), suppress the push —
- * they can see in-app indicators (unread dots, tab title counter) instead.
- * Anything short of that proof sends, because a missed push is far more
- * costly than a redundant one. See eventRouter.hasActiveUiClient.
+ * Suppression: if the user has ANY non-machine client that is active
+ * (connected + not backgrounded), suppress the push — they can see in-app
+ * indicators (unread dots, tab title counter) instead.
  *
- * Every path reports a PushOutcome so callers can tell "delivered" from
- * "suppressed" from "nobody has a device registered" — previously all three
- * looked identical to the CLI, which is how a total push outage stayed
- * invisible for two months.
+ * "Active" is determined by socket.data.appState:
+ *   - Clients send `app-state: { state: 'active' | 'background' }` via socket.
+ *   - Old clients that never send it are treated as active (connected = present).
+ *   - On disconnect the socket (and its state) disappears automatically.
  */
 
 import { db } from "@/storage/db";
 import { isUserActive } from "@/app/push/focusTracker";
 import { sendPushNotifications } from "@/app/push/pushSend";
 import { log } from "@/utils/log";
-
-/** What actually happened to a session-event push. */
-export type PushOutcome =
-    | { result: 'sent'; tokens: number }
-    | { result: 'partial'; tokens: number; delivered: number; reason: string }
-    | { result: 'suppressed'; reason: string }
-    | { result: 'no_tokens' }
-    | { result: 'failed'; reason: string };
 
 async function fetchTokensAndSend(params: {
     userId: string;
@@ -42,7 +32,7 @@ async function fetchTokensAndSend(params: {
     body: string;
     data: Record<string, unknown>;
     channelId: string;
-}): Promise<PushOutcome> {
+}): Promise<void> {
     // All push tokens are mobile — web/CLI never register Expo tokens.
     const tokens = await db.accountPushToken.findMany({
         where: { accountId: params.userId }
@@ -50,7 +40,7 @@ async function fetchTokensAndSend(params: {
 
     if (tokens.length === 0) {
         log({ module: 'push' }, `No push tokens for user ${params.userId} session ${params.sessionId} — skipped`);
-        return { result: 'no_tokens' };
+        return;
     }
 
     const tickets = await sendPushNotifications(
@@ -82,17 +72,9 @@ async function fetchTokensAndSend(params: {
 
     if (errors.length === 0) {
         log({ module: 'push' }, `Push sent for user ${params.userId} session ${params.sessionId}: ${okCount} token(s)`);
-        return { result: 'sent', tokens: okCount };
+    } else {
+        log({ module: 'push', level: 'warn' }, `Push partial for user ${params.userId} session ${params.sessionId}: ok=${okCount} errors=${JSON.stringify(errors)}`);
     }
-
-    // Nothing got through — an Expo outage or timeout, not a per-device problem.
-    if (okCount === 0) {
-        log({ module: 'push', level: 'error' }, `Push failed for user ${params.userId} session ${params.sessionId}: errors=${JSON.stringify(errors)}`);
-        return { result: 'failed', reason: errors.join(', ') };
-    }
-
-    log({ module: 'push', level: 'warn' }, `Push partial for user ${params.userId} session ${params.sessionId}: ok=${okCount} errors=${JSON.stringify(errors)}`);
-    return { result: 'partial', tokens: tokens.length, delivered: okCount, reason: errors.join(', ') };
 }
 
 export async function dispatchSessionEventPush(params: {
@@ -101,21 +83,27 @@ export async function dispatchSessionEventPush(params: {
     title: string;
     body: string;
     data?: Record<string, unknown>;
-}): Promise<PushOutcome> {
+}): Promise<void> {
     const { userId, sessionId, title, body, data } = params;
 
     try {
-        try {
-            if (await isUserActive(userId)) {
-                log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active`);
-                return { result: 'suppressed', reason: 'active-ui-client' };
+        // Self-host patch: the mobile app's background reconnect loop leaves a
+        // phantom "active" socket on the server, so this presence check misfires
+        // and suppresses EVERY "It's ready!" push (logs "user active" even when the
+        // app is fully closed). Default to always-send so pushes actually deliver;
+        // set HAPPY_SUPPRESS_ACTIVE_PUSH=true to restore upstream presence behavior.
+        if (process.env.HAPPY_SUPPRESS_ACTIVE_PUSH === 'true') {
+            try {
+                if (await isUserActive(userId)) {
+                    log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: user active`);
+                    return;
+                }
+            } catch (presenceError) {
+                log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
             }
-        } catch (presenceError) {
-            // Fail open: if we cannot prove the user is watching, notify them.
-            log({ module: 'push', level: 'error' }, `Presence check failed, sending push anyway: ${presenceError}`);
         }
 
-        return await fetchTokensAndSend({
+        await fetchTokensAndSend({
             userId,
             sessionId,
             title,
@@ -125,6 +113,5 @@ export async function dispatchSessionEventPush(params: {
         });
     } catch (error) {
         log({ module: 'push', level: 'error' }, `Session-event push dispatch failed: ${error}`);
-        return { result: 'failed', reason: error instanceof Error ? error.message : String(error) };
     }
 }

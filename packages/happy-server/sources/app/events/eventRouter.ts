@@ -281,21 +281,20 @@ class EventRouter {
     // === PRESENCE QUERIES ===
 
     /**
-     * Returns true only with POSITIVE proof that the user is looking at a UI
-     * client: a `user-scoped` socket that explicitly reported
-     * `app-state: active`.
-     *
-     *   - A running coding session holds its own `session-scoped` socket for
-     *     the whole session and never sends `app-state` — it must NOT count as
-     *     "the user is watching", or it suppresses the very push it asked for.
-     *   - The daemon's `machine-scoped` socket is not a notification surface.
-     *   - A client that never reported its state is unknown, not present.
+     * Returns true if the user has any non-machine socket that hasn't
+     * reported `app-state: background`.  Old clients that never send
+     * `app-state` are treated as active (connected = present).
      *
      * Uses fetchSockets() which works cross-replica via Redis streams adapter.
      */
-    async hasActiveUiClient(userId: string): Promise<boolean> {
+    async hasActiveNonMachineSocket(userId: string): Promise<boolean> {
         const sockets = await this.io.in(`user:${userId}`).fetchSockets();
-        return sockets.some(s => s.data.clientType === 'user-scoped' && s.data.appState === 'active');
+        return sockets.some(s => {
+            if (s.data.clientType === 'machine-scoped') return false;
+            // No app-state yet → old client or just connected; assume active
+            const appState = s.data.appState as string | undefined;
+            return appState !== 'background';
+        });
     }
 
     // === PRIVATE ROUTING LOGIC ===
