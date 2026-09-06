@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { apiSocket, getCurrentAppState, getHappyClientId } from '@/sync/apiSocket';
+import { getVisibleSessionId } from '@/utils/visibleSession';
 import { notifyUnreadMessage } from '@/sync/webTabTitle';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
@@ -165,6 +166,9 @@ class Sync {
             // by updating this.appState too — re-derive via getCurrentAppState() so
             // the wire value matches what the server uses for suppression.
             apiSocket.sendAppState(getCurrentAppState());
+            // Re-assert which chat is open so per-session push suppression stays
+            // in sync with the (possibly changed) foreground state.
+            apiSocket.sendViewedSession(getVisibleSessionId());
 
             if (nextAppState === 'active') {
                 const shouldFailAfterResume = this.backgroundSendStartedAt !== null
@@ -201,6 +205,7 @@ class Sync {
         if (Platform.OS === 'web' && typeof document !== 'undefined') {
             const broadcast = () => {
                 apiSocket.sendAppState(getCurrentAppState());
+                apiSocket.sendViewedSession(getVisibleSessionId());
             };
             document.addEventListener('visibilitychange', broadcast);
             window.addEventListener('focus', broadcast);
@@ -2090,6 +2095,9 @@ class Sync {
             // suppression rules pick up where we left off (handshake.auth.appState
             // covers the very first connect; this covers reconnects).
             apiSocket.sendAppState(getCurrentAppState());
+            // Same for the open chat — the static handshake auth isn't
+            // re-evaluated on reconnect, so re-assert it explicitly.
+            apiSocket.sendViewedSession(getVisibleSessionId());
 
             this.sessionsSync.invalidate();
             this.machinesSync.invalidate();

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import { getVisibleSessionId, setVisibleSessionId } from '@/utils/visibleSession';
+import { apiSocket } from '@/sync/apiSocket';
 
 /**
  * Marks `sessionId` as the on-screen chat while this screen is focused, and
@@ -19,9 +20,11 @@ export function useTrackVisibleSession(sessionId: string): void {
             return;
         }
         setVisibleSessionId(sessionId);
+        apiSocket.sendViewedSession(sessionId);
         return () => {
             if (getVisibleSessionId() === sessionId) {
                 setVisibleSessionId(null);
+                apiSocket.sendViewedSession(null);
             }
         };
     }, [isFocused, sessionId]);

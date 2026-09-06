@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { storage } from './storage';
+import { getVisibleSessionId } from '@/utils/visibleSession';
 
 export function getHappyClientId(): string {
     let platform: string = Platform.OS; // 'ios' | 'android' | 'web'
@@ -92,6 +93,7 @@ class ApiSocket {
                 clientType: 'user-scoped' as const,
                 happyClient: getHappyClientId(),
                 appState: getCurrentAppState(),
+                viewedSession: getVisibleSessionId() ?? undefined,
             },
             transports: ['websocket'],
             reconnection: true,
@@ -186,6 +188,15 @@ class ApiSocket {
      */
     sendAppState(state: string) {
         this.socket?.emit('app-state', { state });
+    }
+
+    /**
+     * Tells the server which chat is currently open (null = none) so it can
+     * suppress the push for only that session. Server suppresses the send
+     * outright — this is the display-quirk-proof half of the fix.
+     */
+    sendViewedSession(sessionId: string | null) {
+        this.socket?.emit('viewing-session', { sessionId });
     }
 
     send(event: string, data: any) {

@@ -297,6 +297,22 @@ class EventRouter {
         });
     }
 
+    /**
+     * Returns true only when the user is demonstrably looking at THIS chat: a
+     * user-scoped socket that is foreground (`app-state: active`) AND reported
+     * `viewing-session` == sessionId. Used to suppress the push for the exact
+     * open chat while every other session still notifies. Positive proof only —
+     * a backgrounded app or a different open chat does not suppress.
+     */
+    async isViewingSession(userId: string, sessionId: string): Promise<boolean> {
+        const sockets = await this.io.in(`user:${userId}`).fetchSockets();
+        return sockets.some(s =>
+            s.data.clientType === 'user-scoped' &&
+            s.data.appState === 'active' &&
+            s.data.viewedSessionId === sessionId
+        );
+    }
+
     // === PRIVATE ROUTING LOGIC ===
 
     private getRoomsForFilter(userId: string, filter: RecipientFilter): string[] {

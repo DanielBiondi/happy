@@ -184,6 +184,21 @@ export function startSocket(app: Fastify) {
             socket.data.appState = data?.state === 'active' ? 'active' : 'background';
         });
 
+        // Which chat the client currently has open (null = none). Used to
+        // suppress a session-event push ONLY for the chat the user is actively
+        // viewing — every other session still notifies. Handshake seeds it to
+        // close the connect race; the event keeps it live.
+        const initialViewedSession = socket.handshake.auth.viewedSession as string | undefined;
+        if (typeof initialViewedSession === 'string' && initialViewedSession) {
+            socket.data.viewedSessionId = initialViewedSession;
+        }
+
+        socket.on('viewing-session', (data: { sessionId: string | null }) => {
+            socket.data.viewedSessionId = (data && typeof data.sessionId === 'string' && data.sessionId)
+                ? data.sessionId
+                : null;
+        });
+
         socket.on('disconnect', () => {
             websocketEventsCounter.inc({ event_type: 'disconnect', ...labels });
 

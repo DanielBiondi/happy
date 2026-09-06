@@ -21,7 +21,7 @@
  */
 
 import { db } from "@/storage/db";
-import { isUserActive } from "@/app/push/focusTracker";
+import { isUserActive, isViewingSession } from "@/app/push/focusTracker";
 import { sendPushNotifications } from "@/app/push/pushSend";
 import { log } from "@/utils/log";
 
@@ -87,6 +87,20 @@ export async function dispatchSessionEventPush(params: {
     const { userId, sessionId, title, body, data } = params;
 
     try {
+        // Per-session suppression: if the user has THIS chat open in the
+        // foreground, don't send — they see the update inline. A different open
+        // chat, the session list, or a backgrounded/closed app all still get
+        // the push. This is client-display-proof: the push is never sent, so no
+        // Android heads-up/channel behavior can override it.
+        try {
+            if (await isViewingSession(userId, sessionId)) {
+                log({ module: 'push' }, `Suppressed session-event push for user ${userId} session ${sessionId}: viewing this chat`);
+                return;
+            }
+        } catch (viewingError) {
+            log({ module: 'push', level: 'error' }, `viewing-session check failed, sending push anyway: ${viewingError}`);
+        }
+
         // Self-host patch: the mobile app's background reconnect loop leaves a
         // phantom "active" socket on the server, so this presence check misfires
         // and suppresses EVERY "It's ready!" push (logs "user active" even when the

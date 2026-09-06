@@ -15,3 +15,11 @@ import { eventRouter } from "@/app/events/eventRouter";
 export async function isUserActive(userId: string): Promise<boolean> {
     return eventRouter.hasActiveNonMachineSocket(userId);
 }
+
+/**
+ * True when the user has the given chat open in the foreground — used to
+ * suppress a session-event push for only that chat.
+ */
+export async function isViewingSession(userId: string, sessionId: string): Promise<boolean> {
+    return eventRouter.isViewingSession(userId, sessionId);
+}
