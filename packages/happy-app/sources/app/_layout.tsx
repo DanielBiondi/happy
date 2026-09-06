@@ -29,7 +29,7 @@ import { initConsoleLogging, setConsoleOutputEnabled } from '@/utils/consoleLogg
 import { useLocalSetting } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
-import { getSessionRouteFromNotificationResponse } from '@/utils/notificationRouting';
+import { getSessionRouteFromNotificationResponse, getSessionRouteFromNotificationData } from '@/utils/notificationRouting';
 import { navigateToSession } from '@/hooks/useNavigateToSession';
 import { applyVoiceUpsellOverride } from '@/realtime/voiceExperiment';
 import { useTauriZoom } from '@/hooks/useTauriZoom';
@@ -43,8 +43,13 @@ import { getVisibleSessionId } from '@/utils/visibleSession';
 Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
         const isForeground = AppState.currentState === 'active';
-        const data = notification?.request?.content?.data as { sessionId?: string } | undefined;
-        const sessionId = data?.sessionId;
+        // The push `data` can arrive as a JSON string (Android) or carry the id
+        // under a `url` field — reuse the same extractor the tap-to-open handler
+        // uses so a naive data.sessionId read doesn't silently miss.
+        const route = getSessionRouteFromNotificationData(notification?.request?.content?.data);
+        const sessionId = route
+            ? (() => { try { return decodeURIComponent(route.replace(/^\/session\//, '')); } catch { return route.replace(/^\/session\//, ''); } })()
+            : null;
         const viewingThisChat = isForeground && !!sessionId && sessionId === getVisibleSessionId();
         return {
             shouldShowAlert: !viewingThisChat,
