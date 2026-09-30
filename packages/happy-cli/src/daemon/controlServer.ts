@@ -10,15 +10,18 @@ import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
 import { decodeBase64 } from '@/api/encryption';
 import { TrackedSession, SessionEncryptionData } from './types';
+import { DAEMON_CONTROL_TOKEN_HEADER, daemonTokensEqual } from './controlAuth';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 
 export function startDaemonControlServer({
+  token,
   getChildren,
   stopSession,
   spawnSession,
   requestShutdown,
   onHappySessionWebhook
 }: {
+  token: string;
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
@@ -28,6 +31,15 @@ export function startDaemonControlServer({
   return new Promise((resolve) => {
     const app = fastify({
       logger: false // We use our own logger
+    });
+
+    // Every route requires the shared secret (defense in depth: the server is bound to
+    // loopback, but loopback is shared with every host-network container and local process).
+    app.addHook('onRequest', async (request, reply) => {
+      if (!daemonTokensEqual(request.headers[DAEMON_CONTROL_TOKEN_HEADER], token)) {
+        logger.debug(`[CONTROL SERVER] Rejected unauthenticated ${request.method} ${request.url}`);
+        return reply.code(401).send({ error: 'unauthorized' });
+      }
     });
 
     // Set up Zod type provider

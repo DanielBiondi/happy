@@ -4,9 +4,16 @@
  */
 
 import { logger } from '@/ui/logger';
-import { clearDaemonState, readDaemonState } from '@/persistence';
+import { clearDaemonState, readDaemonState, readDaemonControlToken } from '@/persistence';
+import { DAEMON_CONTROL_TOKEN_HEADER } from './controlAuth';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
+
+/** Header carrying the daemon's shared secret; empty when talking to a pre-token daemon. */
+function daemonAuthHeaders(): Record<string, string> {
+  const token = readDaemonControlToken();
+  return token ? { [DAEMON_CONTROL_TOKEN_HEADER]: token } : {};
+}
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
@@ -32,7 +39,7 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
     const timeout = process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000;
     const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...daemonAuthHeaders() },
       body: JSON.stringify(body || {}),
       // Mostly increased for stress test
       signal: AbortSignal.timeout(timeout)
@@ -157,7 +164,7 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
     try {
       const response = await fetch(`http://127.0.0.1:${state.httpPort}/list`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...daemonAuthHeaders() },
         body: '{}',
         signal: AbortSignal.timeout(2000)
       });

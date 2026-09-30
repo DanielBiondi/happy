@@ -317,9 +317,49 @@ export function writeDaemonState(state: DaemonLocallyPersistedState): void {
 }
 
 /**
+ * Persist the daemon control-server shared secret. Owner-only (0600), written to a
+ * temp file created with O_EXCL and renamed into place so readers never see a partial token.
+ */
+export function writeDaemonControlToken(token: string): void {
+  const file = configuration.daemonControlTokenFile;
+  const tmp = `${file}.${process.pid}.tmp`;
+  // A leftover tmp (crash between write and rename, or pid reuse) would make 'wx' fail forever.
+  // unlink removes a planted symlink itself, never its target, so this keeps O_EXCL's guarantee.
+  try { unlinkSync(tmp); } catch { /* absent */ }
+  writeFileSync(tmp, token, { encoding: 'utf-8', mode: 0o600, flag: 'wx' });
+  try {
+    renameSync(tmp, file);
+  } catch (error) {
+    try { unlinkSync(tmp); } catch { /* best effort */ }
+    throw error;
+  }
+}
+
+/** Returns the token of the daemon that owns this HAPPY_HOME_DIR, or null (old daemon / none). */
+export function readDaemonControlToken(): string | null {
+  try {
+    const t = readFileSync(configuration.daemonControlTokenFile, 'utf-8').trim();
+    return t.length > 0 ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Daemon heartbeat self-heal: a client-side stale-state cleanup (health-check timeout) deletes the
+ * token file of a live daemon. Rewrite it when missing or different. Returns true if it rewrote.
+ */
+export function ensureDaemonControlToken(token: string): boolean {
+  if (readDaemonControlToken() === token) return false;
+  writeDaemonControlToken(token);
+  return true;
+}
+
+/**
  * Clean up daemon state file and lock file
  */
 export async function clearDaemonState(): Promise<void> {
+  try { unlinkSync(configuration.daemonControlTokenFile); } catch { /* absent */ }
   if (existsSync(configuration.daemonStateFile)) {
     await unlink(configuration.daemonStateFile);
   }

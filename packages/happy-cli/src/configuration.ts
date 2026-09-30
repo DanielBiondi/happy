@@ -22,6 +22,7 @@ class Configuration {
   public readonly privateKeyFile: string
   public readonly daemonStateFile: string
   public readonly daemonLockFile: string
+  public readonly daemonControlTokenFile: string
   public readonly sessionsFile: string
   public readonly currentCliVersion: string
 
@@ -47,6 +48,7 @@ class Configuration {
     this.privateKeyFile = join(this.happyHomeDir, 'access.key')
     this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
+    this.daemonControlTokenFile = join(this.happyHomeDir, 'daemon.control-token')
     this.sessionsFile = join(this.happyHomeDir, 'sessions.json')
 
     // URL precedence (both): HAPPY_*_URL env > settings.<key> > default.

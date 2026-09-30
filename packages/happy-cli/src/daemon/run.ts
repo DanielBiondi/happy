@@ -14,7 +14,8 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
+import { randomBytes } from 'node:crypto';
+import { writeDaemonControlToken, ensureDaemonControlToken, writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession } from '@/persistence';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -770,8 +771,12 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
-    // Start control server
+    // Start control server. Token file goes down BEFORE the server listens so no authenticated
+    // client can ever observe a live port without a readable token.
+    const controlToken = randomBytes(32).toString('hex');
+    writeDaemonControlToken(controlToken);
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
+      token: controlToken,
       getChildren: getCurrentChildren,
       stopSession,
       spawnSession,
@@ -929,6 +934,10 @@ export async function startDaemon(): Promise<void> {
           daemonLogPath: fileState.daemonLogPath
         };
         writeDaemonState(updatedState);
+        // A client-side stale-state cleanup (health-check timeout) can delete the token file of a
+        // live daemon; self-heal it here or every client would be locked out until restart.
+        // Never when another daemon owns the state (we are shutting down): that would overwrite ITS token.
+        if (!daemonState || daemonState.pid === process.pid) ensureDaemonControlToken(controlToken);
         if (process.env.DEBUG) {
           logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
         }
