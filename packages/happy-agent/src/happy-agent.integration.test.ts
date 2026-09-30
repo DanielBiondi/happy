@@ -309,11 +309,18 @@ async function runAgentAuthLogin(env: NodeJS.ProcessEnv, approval: { serverUrl: 
     });
 }
 
-async function listDaemonSessions(httpPort: number): Promise<Array<{ happySessionId: string; pid: number; startedBy: string }>> {
+// The daemon control server requires the shared secret written next to daemon.state.json.
+function daemonAuthHeaders(envDir: string): Record<string, string> {
+    const tokenPath = join(envDir, 'cli', 'home', 'daemon.control-token');
+    return existsSync(tokenPath) ? { 'x-happy-daemon-token': readFileSync(tokenPath, 'utf-8').trim() } : {};
+}
+
+async function listDaemonSessions(envDir: string, httpPort: number): Promise<Array<{ happySessionId: string; pid: number; startedBy: string }>> {
     const response = await fetch(`http://127.0.0.1:${httpPort}/list`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            ...daemonAuthHeaders(envDir),
         },
         body: '{}',
     });
@@ -324,11 +331,12 @@ async function listDaemonSessions(httpPort: number): Promise<Array<{ happySessio
     return parsed.children;
 }
 
-async function stopDaemonSession(httpPort: number, sessionId: string): Promise<boolean> {
+async function stopDaemonSession(envDir: string, httpPort: number, sessionId: string): Promise<boolean> {
     const response = await fetch(`http://127.0.0.1:${httpPort}/stop-session`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
+            ...daemonAuthHeaders(envDir),
         },
         body: JSON.stringify({ sessionId }),
     });
@@ -374,7 +382,7 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
                 const daemonState = readDaemonState(integrationEnvDir);
                 if (daemonState?.httpPort) {
                     for (const sessionId of spawnedSessionIds) {
-                        await stopDaemonSession(daemonState.httpPort, sessionId).catch(() => false);
+                        await stopDaemonSession(integrationEnvDir, daemonState.httpPort, sessionId).catch(() => false);
                     }
                 }
             }
@@ -501,7 +509,7 @@ describe('happy-agent integration', { timeout: 180_000 }, () => {
         expect(daemonState?.httpPort).toBeTruthy();
 
         await waitFor(async () => {
-            const sessions = await listDaemonSessions(daemonState!.httpPort!);
+            const sessions = await listDaemonSessions(integrationEnvDir, daemonState!.httpPort!);
             return sessions.some(session => session.happySessionId === sessionId);
         }, 20_000, 'spawned session to be tracked by daemon');
     });
