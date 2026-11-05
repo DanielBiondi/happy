@@ -76,19 +76,66 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 }
 
 export function getClaudeModelModes(): ModelMode[] {
-    // Keys are FULL model ids, not the bare `opus`/`sonnet` aliases: the key is
-    // passed straight through to Claude Code's --model with no whitelist, and
-    // the bare aliases now float to the latest of each tier (e.g. `opus` ==
-    // Opus 5), so an alias-keyed "opus 4.8" entry would silently run the wrong
-    // model. Pinning to ids keeps each label honest.
+    // The key is passed straight to Claude Code's --model.
+    // - 'default' sends no model at all, so Claude uses the machine's
+    //   settings.json model: the one the terminal's /model saved.
+    // - The bare aliases resolve inside the Claude binary to the newest model
+    //   of each family, so a new release shows up without an app update.
     return [
-        { key: 'default', name: 'default model', description: null },
-        { key: 'claude-fable-5-1', name: 'fable 5.1', description: 'most capable' },
-        { key: 'claude-opus-5', name: 'opus 5', description: null },
-        { key: 'claude-sonnet-5', name: 'sonnet 5', description: null },
-        { key: 'claude-opus-4-8', name: 'opus 4.8', description: null },
-        { key: 'claude-haiku-4-5', name: 'haiku 4.5', description: 'fastest' },
+        { key: 'default', name: 'default', description: 'same as the terminal' },
+        { key: 'opus', name: 'opus', description: 'newest opus' },
+        { key: 'fable', name: 'fable', description: 'newest fable, most capable' },
+        { key: 'sonnet', name: 'sonnet', description: 'newest sonnet' },
+        { key: 'haiku', name: 'haiku', description: 'newest haiku, fastest' },
     ];
+}
+
+/**
+ * Short display name for a Claude model id or alias reported by the CLI or
+ * stored from an older picker: 'claude-opus-5-5' -> 'opus 5.5',
+ * 'claude-haiku-4-5-20251001' -> 'haiku 4.5', 'opus[1m]' -> 'opus (1M)'.
+ */
+export function prettyClaudeModelName(model: string): string {
+    const longContext = /\[1m\]$/i.test(model);
+    const base = model.replace(/\[1m\]$/i, '');
+    const match = base.match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
+    const name = match
+        ? `${match[1]} ${match[2]}${match[3] ? `.${match[3]}` : ''}`
+        : base.replace(/^claude-/, '');
+    return longContext ? `${name} (1M)` : name;
+}
+
+/**
+ * Resolve which Claude model/effort option the picker shows.
+ *
+ * The first non-empty key is what the next message will send (the session's
+ * own pick, then the user's default from settings, then the code default), so
+ * the picker shows exactly that, even when the key isn't in the list (a pick
+ * saved by an older app version). When it resolves to 'default', the label
+ * names what the CLI reports is actually in use, e.g. "default (opus 5.5)".
+ */
+export function resolveClaudeOption<T extends ModeOption>(
+    options: T[],
+    preferredKeys: Array<string | null | undefined>,
+    reportedInUse: string | null | undefined,
+    formatReported: (value: string) => string,
+): { options: T[]; current: T | null } {
+    const key = preferredKeys.find((k): k is string => typeof k === 'string' && k.length > 0);
+    if (!key) {
+        return { options, current: null };
+    }
+    let list = options;
+    let current = findOptionByKey(options, key);
+    if (!current) {
+        current = { key, name: formatReported(key), description: null } as T;
+        list = [...options, current];
+    }
+    if (current.key === 'default' && reportedInUse) {
+        const labelled = { ...current, name: `${current.name} (${formatReported(reportedInUse)})` };
+        list = list.map((option) => (option.key === 'default' ? labelled : option));
+        current = labelled;
+    }
+    return { options: list, current };
 }
 
 export function getCodexModelModes(): ModelMode[] {
@@ -211,6 +258,9 @@ export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
 
 export function getClaudeEffortLevels(): EffortLevel[] {
     return [
+        // 'default' sends no effort, so Claude uses settings.json effortLevel
+        // (what the terminal's /effort saved).
+        { key: 'default', name: 'default' },
         { key: 'low', name: 'low' },
         { key: 'medium', name: 'medium' },
         { key: 'high', name: 'high' },

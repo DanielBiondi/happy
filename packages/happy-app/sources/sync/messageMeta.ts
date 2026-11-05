@@ -29,7 +29,8 @@ export function resolveMessageModeMeta(
 
     const effort = session.effortLevel ?? agentOverrides.effortLevel;
     if (effort !== undefined) {
-        meta.effort = effort;
+        // null tells the CLI to drop its override and use the terminal's effort.
+        meta.effort = effort === 'default' ? null : effort;
     }
 
     return meta;

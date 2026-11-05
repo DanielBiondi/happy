@@ -30,7 +30,9 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     // Upstream defaults Claude to `bypassPermissions` (YOLO). Our fork defaults
     // to `auto` instead — matching the CLI's DEFAULT_CLAUDE_PERMISSION_MODE — so
     // sessions are never bypass unless explicitly launched or switched that way.
-    claude: { permissionMode: 'auto', modelMode: 'claude-opus-5', effortLevel: 'high' },
+    // Model and effort default to 'default': the app sends nothing and Claude
+    // uses the machine's settings.json, i.e. whatever the terminal uses.
+    claude: { permissionMode: 'auto', modelMode: 'default', effortLevel: 'default' },
     codex: { permissionMode: 'yolo', modelMode: 'gpt-5.5', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },

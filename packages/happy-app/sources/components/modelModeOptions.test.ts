@@ -3,11 +3,15 @@ import {
     getAvailableModels,
     getAvailablePermissionModes,
     getCodexModelModes,
+    getClaudeEffortLevels,
+    getClaudeModelModes,
     getClaudePermissionModes,
     getDefaultEffortKey,
     getDefaultModelKey,
     getDefaultPermissionModeKey,
     mapMetadataOptions,
+    prettyClaudeModelName,
+    resolveClaudeOption,
     resolveCurrentOption,
 } from './modelModeOptions';
 
@@ -48,8 +52,8 @@ describe('modelModeOptions', () => {
 
     it('uses code defaults for agent defaults', () => {
         expect(getDefaultPermissionModeKey('claude')).toBe('auto');
-        expect(getDefaultModelKey('claude')).toBe('opus');
-        expect(getDefaultEffortKey('claude')).toBe('medium');
+        expect(getDefaultModelKey('claude')).toBe('default');
+        expect(getDefaultEffortKey('claude')).toBe('default');
         expect(getDefaultPermissionModeKey('codex')).toBe('yolo');
         expect(getDefaultModelKey('codex')).toBe('gpt-5.5');
         expect(getDefaultEffortKey('codex')).toBe('medium');
@@ -110,5 +114,53 @@ describe('modelModeOptions', () => {
 
         expect(resolveCurrentOption(options, ['missing', 'b', 'a'])).toEqual({ key: 'b', name: 'B' });
         expect(resolveCurrentOption(options, ['missing'])).toBeNull();
+    });
+
+    it('lists floating claude aliases with default first', () => {
+        const keys = getClaudeModelModes().map((m) => m.key);
+        expect(keys[0]).toBe('default');
+        expect(keys).toEqual(expect.arrayContaining(['opus', 'sonnet', 'haiku', 'fable']));
+        expect(getClaudeEffortLevels()[0].key).toBe('default');
+    });
+
+    it('prettifies claude model ids', () => {
+        expect(prettyClaudeModelName('claude-opus-5-5')).toBe('opus 5.5');
+        expect(prettyClaudeModelName('claude-opus-5')).toBe('opus 5');
+        expect(prettyClaudeModelName('claude-haiku-4-5-20251001')).toBe('haiku 4.5');
+        expect(prettyClaudeModelName('claude-fable-5-1')).toBe('fable 5.1');
+        expect(prettyClaudeModelName('opus')).toBe('opus');
+        expect(prettyClaudeModelName('opus[1m]')).toBe('opus (1M)');
+    });
+
+    it('shows the first set key even when it is not in the list', () => {
+        const { options, current } = resolveClaudeOption(
+            getClaudeModelModes(),
+            ['claude-opus-4-8', 'default'],
+            'claude-opus-5-5',
+            prettyClaudeModelName,
+        );
+        expect(current?.key).toBe('claude-opus-4-8');
+        expect(current?.name).toBe('opus 4.8');
+        expect(options.some((o) => o.key === 'claude-opus-4-8')).toBe(true);
+    });
+
+    it('labels default with what the CLI reports in use', () => {
+        const { options, current } = resolveClaudeOption(
+            getClaudeModelModes(),
+            [null, 'default'],
+            'claude-opus-5-5',
+            prettyClaudeModelName,
+        );
+        expect(current?.key).toBe('default');
+        expect(current?.name).toBe('default (opus 5.5)');
+        expect(options.find((o) => o.key === 'default')?.name).toBe('default (opus 5.5)');
+
+        const effort = resolveClaudeOption(getClaudeEffortLevels(), [undefined, 'default'], 'xhigh', (v) => v);
+        expect(effort.current?.name).toBe('default (xhigh)');
+    });
+
+    it('does not label an explicit non-default pick with the reported model', () => {
+        const { current } = resolveClaudeOption(getClaudeModelModes(), ['sonnet'], 'claude-opus-5-5', prettyClaudeModelName);
+        expect(current?.name).toBe('sonnet');
     });
 });

@@ -7,6 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import {
     getEffortLevelsForModel,
     getHardcodedModelModes,
+    prettyClaudeModelName,
     getHardcodedPermissionModes,
     type ModeOption,
 } from '@/components/modelModeOptions';
@@ -45,7 +46,13 @@ const agentLabels: Record<AgentKey, string> = {
 
 function optionName(options: ModeOption[], key: string | null | undefined): string {
     if (!key) return 'none';
-    return options.find((option) => option.key === key)?.name ?? key;
+    const found = options.find((option) => option.key === key);
+    if (found) return found.name;
+    // Model/effort 'default' sends nothing, so the CLI's own settings apply.
+    if (key === 'default') return 'same as the terminal';
+    // A pinned id saved by an older app version.
+    if (key.startsWith('claude-')) return prettyClaudeModelName(key);
+    return key;
 }
 
 export default function AgentDefaultsSettingsScreen() {
@@ -143,8 +150,10 @@ export default function AgentDefaultsSettingsScreen() {
                 const codeDefaults = getCodeAgentDefaults(agent);
                 const effectiveDefaults = resolveAgentDefaultConfig(agentDefaultOverrides, agent);
                 const permissionOptions = getHardcodedPermissionModes(agent, t);
+                // 'default' (= same as the terminal) is what "Use code default"
+                // already means, so it isn't listed a second time.
                 const modelOptions = getHardcodedModelModes(agent, t).filter((option) => option.key !== 'default');
-                const effortOptions = getEffortLevelsForModel(agent, effectiveDefaults.modelMode);
+                const effortOptions = getEffortLevelsForModel(agent, effectiveDefaults.modelMode).filter((option) => option.key !== 'default');
                 const fields: FieldConfig[] = [
                     {
                         field: 'permissionMode',

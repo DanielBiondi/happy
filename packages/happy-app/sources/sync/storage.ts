@@ -419,11 +419,13 @@ export const storage = create<StorageState>()((set, get) => {
 
                 // Restore model mode / effort level from MMKV on first load — server
                 // does not sync these, and they used to reset on every app restart (#1028).
+                // An in-memory pick (including an explicit 'default') always
+                // wins. This used to drop 'default' unless it matched the MMKV
+                // snapshot, but that snapshot is only passed on the first load,
+                // so every later refresh (each message, metadata change and
+                // activity heartbeat) wiped the pick within seconds.
                 const savedModelMode = savedModelModes[session.id] ?? null;
-                const existingModelModeRaw = state.sessions[session.id]?.modelMode ?? null;
-                const existingModelMode = existingModelModeRaw === 'default' && savedModelMode !== 'default'
-                    ? null
-                    : existingModelModeRaw;
+                const existingModelMode = state.sessions[session.id]?.modelMode ?? null;
                 const resolvedModelMode = existingModelMode ?? savedModelMode ?? session.modelMode ?? null;
                 const existingEffortLevel = state.sessions[session.id]?.effortLevel ?? null;
                 const resolvedEffortLevel = existingEffortLevel ?? savedEffortLevels[session.id] ?? session.effortLevel ?? null;

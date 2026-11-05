@@ -6,6 +6,8 @@ import {
     getAvailableModels,
     getAvailablePermissionModes,
     getEffortLevelsForModel,
+    prettyClaudeModelName,
+    resolveClaudeOption,
     resolveCurrentOption,
     EffortLevel,
 } from '@/components/modelModeOptions';
@@ -50,7 +52,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import type { ModelMode, PermissionMode } from '@/components/PermissionModeSelector';
-import { resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { normalizeAgentKey, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -450,25 +452,55 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         ])
     ), [availableModes, session.permissionMode, effectiveAgentDefaults.permissionMode, session.metadata?.currentOperatingModeCode]);
 
-    const modelMode = React.useMemo<ModelMode | null>(() => (
-        resolveCurrentOption(availableModels, [
-            session.modelMode,
-            effectiveAgentDefaults.modelMode,
-            session.metadata?.currentModelCode,
-        ])
-    ), [availableModels, session.modelMode, effectiveAgentDefaults.modelMode, session.metadata?.currentModelCode]);
+    // Claude: show exactly what the next message sends (session pick → user
+    // default → code default). 'default' means "whatever the terminal uses"
+    // and is labelled with what the CLI reports, e.g. "default (opus 5.5)".
+    // Other agents keep the metadata-driven resolution.
+    const isClaude = normalizeAgentKey(flavor) === 'claude';
+    const currentModelCode = session.metadata?.currentModelCode;
+    const modelState = React.useMemo<{ options: ModelMode[]; current: ModelMode | null }>(() => (
+        isClaude
+            ? resolveClaudeOption(
+                availableModels,
+                [session.modelMode, effectiveAgentDefaults.modelMode],
+                currentModelCode,
+                prettyClaudeModelName,
+            )
+            : {
+                options: availableModels,
+                current: resolveCurrentOption(availableModels, [
+                    session.modelMode,
+                    effectiveAgentDefaults.modelMode,
+                    currentModelCode,
+                ]),
+            }
+    ), [isClaude, availableModels, session.modelMode, effectiveAgentDefaults.modelMode, currentModelCode]);
+    const modelMode = modelState.current;
 
     // Effort level state
     const modelKey = modelMode?.key ?? 'default';
-    const availableEffortLevels = React.useMemo<EffortLevel[]>(() => (
+    const baseEffortLevels = React.useMemo<EffortLevel[]>(() => (
         getEffortLevelsForModel(flavor, modelKey)
     ), [flavor, modelKey]);
-    const effortLevel = React.useMemo<EffortLevel | null>(() => (
-        resolveCurrentOption(availableEffortLevels, [
-            session.effortLevel,
-            effectiveAgentDefaults.effortLevel,
-        ])
-    ), [availableEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel]);
+    const currentEffortCode = session.metadata?.currentThoughtLevelCode;
+    const effortState = React.useMemo<{ options: EffortLevel[]; current: EffortLevel | null }>(() => (
+        isClaude
+            ? resolveClaudeOption(
+                baseEffortLevels,
+                [session.effortLevel, effectiveAgentDefaults.effortLevel],
+                currentEffortCode,
+                (value) => value,
+            )
+            : {
+                options: baseEffortLevels,
+                current: resolveCurrentOption(baseEffortLevels, [
+                    session.effortLevel,
+                    effectiveAgentDefaults.effortLevel,
+                ]),
+            }
+    ), [isClaude, baseEffortLevels, session.effortLevel, effectiveAgentDefaults.effortLevel, currentEffortCode]);
+    const availableEffortLevels = effortState.options;
+    const effortLevel = effortState.current;
 
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
@@ -537,7 +569,10 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId, expImageUpload, selectedImages, clearImages]);
 
     const handleAbort = React.useCallback(() => {
-        storage.getState().resetSessionAgentOverrides(sessionId);
+        // Stop resets the permission mode (the CLI drops back to the mode it
+        // started in), but keeps the model and effort picks: losing those on
+        // every stop was one of the "snaps back" reports.
+        storage.getState().updateSessionPermissionMode(sessionId, null);
         sessionAbort(sessionId);
     }, [sessionId]);
 
@@ -667,7 +702,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             onPermissionModeChange={updatePermissionMode}
             availableModes={availableModes}
             modelMode={modelMode}
-            availableModels={availableModels}
+            availableModels={modelState.options}
             onModelModeChange={updateModelMode}
             effortLevel={effortLevel}
             availableEffortLevels={availableEffortLevels}

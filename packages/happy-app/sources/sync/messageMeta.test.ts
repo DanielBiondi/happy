@@ -84,4 +84,26 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({ model: null });
     });
+
+    it('treats an explicit default effort as a reset override', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: 'default',
+            metadata: { flavor: 'claude' },
+        } as any);
+
+        expect(meta).toEqual({ effort: null });
+    });
+
+    it('sends nothing when neither the session nor settings picked anything', () => {
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, { agentDefaultOverrides: {} } as any);
+
+        expect(meta).toEqual({});
+    });
 });
